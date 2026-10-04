@@ -1,0 +1,8 @@
+# Tooling for local development and CI only. The plugin itself has zero
+# third-party runtime dependencies (see README.md).
+#
+# Pinned loosely on purpose: on Python 3.8 the resolver selects pytest 8.x
+# (pytest 9 requires 3.9+); on 3.14 it selects the current release.
+pytest
+flake8
+mock

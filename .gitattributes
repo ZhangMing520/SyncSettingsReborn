@@ -6,8 +6,7 @@ tests/                export-ignore
 __pycache__/          export-ignore
 .pytest_cache/        export-ignore
 .venv/                export-ignore
-Pipfile               export-ignore
-Pipfile.lock          export-ignore
+requirements-dev.txt  export-ignore
 .flake8               export-ignore
 .editorconfig         export-ignore
 .all-contributorsrc   export-ignore
