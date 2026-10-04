@@ -379,10 +379,10 @@ def install_missing_packages(remote_packages):
         # auto-sync loop and the Download command thread), and running a window
         # command from off the main thread is not the documented-safe path.
         # Fire-and-forget keeps the best-effort, non-blocking contract.
-        sublime.set_timeout(
-            lambda w=window, n=names: w.run_command(
-                'advanced_install_package', {'packages': n}),
-            0)
+        def _install():
+            window.run_command(
+                'advanced_install_package', {'packages': names})
+        sublime.set_timeout(_install, 0)
         logger.info('requested install of missing packages: {}'.format(names))
     except Exception as e:
         logger.warning('skipping package installation')
