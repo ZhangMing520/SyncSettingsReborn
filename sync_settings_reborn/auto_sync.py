@@ -28,6 +28,12 @@ import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set
 
+# Serialises gist *creation* so a manual Upload and the auto-sync loop can't
+# both see an empty `gist_id` and each create a gist. The first to acquire it
+# creates and writes `gist_id`; the second re-reads `gist_id` inside the lock
+# and takes the update path instead.
+_gist_create_lock = threading.Lock()
+
 import sublime
 
 from .libs import settings, path, http
@@ -339,11 +345,19 @@ def _push(payload):
         if gid:
             g = gist_api.update(gid, data=data)
         else:
-            data['description'] = 'SyncSettingsReborn backup'
-            g = gist_api.create(data)
-            settings.update('gist_id', g['id'])
-            logger.info('auto-sync created gist {}'.format(g['id']))
-        return g
+            # Single-flight: a concurrent manual Upload may have created the
+            # gist while we waited. Re-check inside the lock and update the
+            # existing gist instead of forking a second one.
+            with _gist_create_lock:
+                gid = settings.get('gist_id')
+                if gid:
+                    g = gist_api.update(gid, data=data)
+                else:
+                    data['description'] = 'SyncSettingsReborn backup'
+                    g = gist_api.create(data)
+                    settings.update('gist_id', g['id'])
+                    logger.info('auto-sync created gist {}'.format(g['id']))
+            return g
     except Exception as e:
         logger.exception(e)
         return None

@@ -43,6 +43,12 @@ The declared transitive dependencies (`urllib3`, `idna`, `certifi`,
   Sublime Text 4, build 4050 or newer — and the Package Control channel
   entry declares `"python_versions": ["3.8"]` so ST3 users are not offered
   the package.
+- **Fixed: concurrent Upload + auto-sync could create two Gists.** When
+  `gist_id` was empty (e.g. right after `Delete` then `Upload`), a manual
+  `Upload` and the background auto-sync loop both saw it empty and each
+  created a Gist, leaving an orphan. Gist creation is now single-flight: a
+  module-level lock makes the second actor re-read `gist_id` inside the lock
+  and update the Gist the first one created instead of forking a second.
 
 ## v4.2.1 — packaging: exclude dev/test files from distribution
 

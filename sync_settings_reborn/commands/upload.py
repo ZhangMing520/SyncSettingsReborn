@@ -63,12 +63,27 @@ class SyncSettingsRebornUploadCommand(sublime_plugin.WindowCommand):
                 # Update the existing gist.
                 g = gist_api.update(gid, data={'files': payload})
             else:
-                # No gist yet: create one and remember it so the next upload
-                # updates instead of creating again. No description prompt, no
-                # "backfill gist_id?" question — this is the one-click reset path.
-                g = gist_api.create({'files': files, 'description': 'SyncSettingsReborn backup'})
-                settings.update('gist_id', g['id'])
-                logger.info('created new gist {}'.format(g['id']))
+                # No gist yet. A concurrent auto-sync cycle may create one while
+                # we wait, so re-check inside the lock and update that gist
+                # instead of forking a second one.
+                with auto_sync._gist_create_lock:
+                    gid = settings.get('gist_id')
+                    if gid:
+                        name_map, removable = self._remote_names_and_deletions(
+                            gist_api, gid, files)
+                        payload, _ = auto_sync._build_payload(
+                            set(files) | removable, files,
+                            auto_sync._content_hashes(files), {}, name_map)
+                        g = gist_api.update(gid, data={'files': payload})
+                    else:
+                        # No gist yet: create one and remember it so the next
+                        # upload updates instead of creating again. No
+                        # description prompt, no "backfill gist_id?" question —
+                        # this is the one-click reset path.
+                        g = gist_api.create(
+                            {'files': files, 'description': 'SyncSettingsReborn backup'})
+                        settings.update('gist_id', g['id'])
+                        logger.info('created new gist {}'.format(g['id']))
             commit = g['history'][0]
             version.update_config_file({
                 'hash': commit['version'],
