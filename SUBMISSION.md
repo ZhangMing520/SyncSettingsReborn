@@ -33,14 +33,22 @@ https://github.com/ZhangMing520/SyncSettingsReborn
 
 **Option B — pull request (recommended, fully controlled)**
 
-1. Fork https://github.com/wbond/package_control_channel
-2. Add a file `packages/S/SyncSettingsReborn.json` (the folder is the
-   first letter of the package name) with this content:
+The channel uses a **centralized** `repository/<letter>.json` schema — every
+package is one entry in a single `packages` array, NOT a standalone
+`packages/<Letter>/<Name>.json` file (that old layout is no longer accepted; a
+PR using it gets rejected as "invalid").
+
+1. Fork https://github.com/sublimehq/package_control_channel
+   (the repo formerly lived under `wbond/` and now redirects to `sublimehq/`).
+2. Edit the existing `repository/s.json` and insert one entry into the
+   `packages` array, in alphabetical order by `name` (SyncSettingsReborn goes
+   after "Syncrow", before "Synesthesia"):
 
 ```json
 {
     "name": "SyncSettingsReborn",
     "details": "https://github.com/ZhangMing520/SyncSettingsReborn",
+    "labels": ["settings", "utilities"],
     "releases": [
         {
             "sublime_text": "*",
@@ -50,7 +58,11 @@ https://github.com/ZhangMing520/SyncSettingsReborn
 }
 ```
 
-3. Open a PR against `wbond/package_control_channel`.
+3. Open a PR against `sublimehq/package_control_channel`. The diff should be a
+   single change to `repository/s.json` (the entry added) — nothing else.
+
+Use the PR template (checklist + package description) when opening the PR; a
+bare JSON change is rejected as "invalid".
 
 ## Result
 
