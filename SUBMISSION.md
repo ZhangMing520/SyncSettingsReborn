@@ -51,12 +51,19 @@ PR using it gets rejected as "invalid").
     "labels": ["settings", "utilities"],
     "releases": [
         {
-            "sublime_text": "*",
+            "sublime_text": ">=4050",
+            "python_versions": ["3.8"],
             "tags": true
         }
     ]
 }
 ```
+
+`python_versions: ["3.8"]` (plus `sublime_text: ">=4050"`) is **required**: the
+plugin no longer loads on Sublime Text 3. ST3 only ships the Python 3.3 host,
+while `auto_sync.py` needs 3.7+ (`dataclasses`) and the package ships
+`.python-version` (`3.8`). Without this restriction Package Control would
+offer the release to ST3 users, where it fails to import.
 
 3. Open a PR against `sublimehq/package_control_channel`. The diff should be a
    single change to `repository/s.json` (the entry added) — nothing else.
@@ -77,7 +84,12 @@ Control picks it up automatically. No need to re-submit.
 - The package install folder name is taken from the channel `name`
   ("SyncSettingsReborn"), so the installed path is
   `Packages/SyncSettingsReborn/`.
-- Runtime dependencies (`requests` and its transitive deps) are declared in
-  `dependencies.json` and installed automatically by Package Control.
+- The package has **no Package Control runtime dependencies** (no
+  `dependencies.json`): all HTTP traffic uses a standard-library
+  (`urllib.request`) layer in `sync_settings_reborn/libs/http.py`. This
+  avoids the channel's `requests` dependency, which is pinned to 2.15.1
+  (2017) and fails to import on Sublime's current Python 3.14 host.
+- `.python-version` (`3.8`) selects the modern Python host and must ship in
+  the tag archive (it is not `export-ignore`d).
 - The settings file was renamed to `SyncSettingsReborn.sublime-settings` and
   old config is migrated automatically on first run.
