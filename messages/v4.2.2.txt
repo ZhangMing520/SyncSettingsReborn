@@ -1,0 +1,26 @@
+SyncSettingsReborn v4.2.2
+
+This release removes the runtime dependency on the "requests" Package
+Control package.
+
+Why: the requests build distributed via Package Control is pinned to
+requests 2.15.1 (2017) and cannot import on current Sublime builds running
+Python 3.14 (it relies on modules removed in Python 3.10/3.13). Its extra
+dependencies are not available in the channel, so there was no way to make
+it work.
+
+What changes for you:
+- All network calls (gist API, settings downloads, auto-sync) now use a
+  small built-in HTTP layer based on the Python standard library. Proxy
+  settings and timeouts work as before, and a configured proxy now also
+  keeps any HTTP_PROXY/HTTPS_PROXY set in the environment for the other
+  scheme.
+- No Package Control dependencies are installed for this package anymore.
+- A .python-version file (3.8) was added so the plugin runs on the modern
+  Python host on Sublime Text 4 builds 4050 and newer.
+
+System requirement: Sublime Text 4 (build 4050 or newer). Sublime Text 3
+(which only provides the legacy Python 3.3 host) is no longer supported.
+
+Nothing to configure; your gist id, token, and all other settings are
+unchanged.

@@ -1,5 +1,7 @@
 # SyncSettingsReborn (maintained fork)
 
+English | [简体中文](README.zh-CN.md)
+
 > This is a community-maintained revival of the original **Sync Settings**
 > plugin, which is no longer updated (see the original author's UNMAINTAINED
 > note below). It is published on Package Control as **SyncSettingsReborn**
@@ -24,17 +26,11 @@ Marcelo
 [![All Contributors](https://img.shields.io/badge/all_contributors-6-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 
-[![SyncSettings](https://img.shields.io/packagecontrol/dt/SyncSettingsReborn.svg?maxAge=2592000)](https://packagecontrol.io/packages/SyncSettingsReborn)
-[![license](https://img.shields.io/github/license/mashape/apistatus.svg?maxAge=2592000)](https://img.shields.io/github/license/mashape/apistatus.svg?maxAge=2592000)
-[![SyncSettings release](https://img.shields.io/github/release/ZhangMing520/SyncSettingsReborn.svg)](https://img.shields.io/github/release/ZhangMing520/SyncSettingsReborn.svg?maxAge=2592000)
-[![Build Status](https://travis-ci.org/ZhangMing520/SyncSettingsReborn.svg?branch=master)](https://travis-ci.org/ZhangMing520/SyncSettingsReborn)
-[![Coverage](https://img.shields.io/codecov/c/github/ZhangMing520/SyncSettingsReborn.svg?style=flat)](https://codecov.io/gh/ZhangMing520/SyncSettingsReborn)
+[![Package Control installs](https://img.shields.io/packagecontrol/dt/SyncSettingsReborn.svg?maxAge=2592000)](https://packagecontrol.io/packages/SyncSettingsReborn)
+[![license](https://img.shields.io/github/license/ZhangMing520/SyncSettingsReborn.svg?maxAge=2592000)](https://github.com/ZhangMing520/SyncSettingsReborn/blob/master/LICENSE)
+[![latest release](https://img.shields.io/github/release/ZhangMing520/SyncSettingsReborn.svg)](https://github.com/ZhangMing520/SyncSettingsReborn/releases)
+[![CI](https://github.com/ZhangMing520/SyncSettingsReborn/actions/workflows/app.yml/badge.svg)](https://github.com/ZhangMing520/SyncSettingsReborn/actions/workflows/app.yml)
 
-<a href="https://www.buymeacoffee.com/mfuentesg" target="_blank">
-   <img height="41" src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" />
-</a>
-
-<br />
 <br />
 
 With [SyncSettingsReborn](https://packagecontrol.io/packages/SyncSettingsReborn), you are able to synchronize your [Sublime Text](http://sublimetext.com/) settings among multiple devices, and keep them updated.
@@ -43,7 +39,7 @@ Being powered by GitHub-Gists, [SyncSettingsReborn](https://packagecontrol.io/pa
 
 Please, follow the steps below to getting started with [SyncSettingsReborn](https://packagecontrol.io/packages/SyncSettingsReborn).
 
-> [SyncSettingsReborn](https://packagecontrol.io/packages/SyncSettingsReborn) works on Windows, Linux, macOS and [Sublime Text 3](http://sublimetext.com/3).
+> [SyncSettingsReborn](https://packagecontrol.io/packages/SyncSettingsReborn) works on Windows, Linux, macOS and requires **Sublime Text 4 (build 4050 or newer)**.
 
 ## Sync methods
 
@@ -58,7 +54,7 @@ On restore, `preserve_packages` (default `true`) merges the incoming `installed_
 
 ## Getting Started
 
-1. Run `Package Control: Install Package` command, and looks for [SyncSettingsReborn](https://packagecontrol.io/packages/Sync%20Settings)
+1. Run `Package Control: Install Package` command, and looks for [SyncSettingsReborn](https://packagecontrol.io/packages/SyncSettingsReborn)
 2. Run `SyncSettingsReborn: Edit User Settings`
 3. **if** *Do you already have a gist?*
     1. Copy `gist id` and put it in config file (`https://gist.github.com/<username>/<gist id>`) (`gist_id` property)
@@ -81,11 +77,11 @@ Please note - the config file uses the JSON format. A simplified example may loo
 
 ## Options
 
-By default, this plugin operates over [Sublime Text](https://www.sublimetext.com) packages folder (i.e `/Users/<my_user>/Library/Application Support/Sublime Text 3/Packages/User`), which means, `excluded_files` and `included_files` will look for files inside that folder.
+By default, this plugin operates over [Sublime Text](https://www.sublimetext.com) packages folder (i.e `/Users/<my_user>/Library/Application Support/Sublime Text/Packages/User`), which means, `excluded_files` and `included_files` will look for files inside that folder.
 
 | name | type | description |
 |---|---|---|
-| `access_token`  | `string` | Brings write permission to [SyncSettingsReborn](https://packagecontrol.io/packages/Sync%20Settings) over your gists (edit, delete and create). *(This option is not required, if you only want to download your backups)* | 
+| `access_token`  | `string` | Brings write permission to [SyncSettingsReborn](https://packagecontrol.io/packages/SyncSettingsReborn) over your gists (edit, delete and create). *(This option is not required, if you only want to download your backups)* | 
 | `gist_id`  | `string` | Identifier of your backup on [gist.github.com](https://gist.github.com). |
 | `auto_upgrade`  | `boolean` | If `true`, settings are kept in sync with the gist automatically: Sublime pulls the latest gist on startup, and a background loop both pulls remote changes and pushes local changes (upload-on-change) on a timer. The sync is a three-way merge (only changed files move each way), and a file edited on two machines at once is reported as a conflict — the local copy is backed up to `~/.sync_settings_reborn/conflicts/<timestamp>/` and the gist version wins, so nothing is silently lost. Requires `access_token` (and a `gist_id` for pulls; pushes create one if missing). Default `false`. |
 | `auto_sync_interval`  | `number` | Background auto-sync poll interval in **minutes**, used only when `auto_upgrade` is `true`. Default `5`. |
@@ -173,19 +169,20 @@ If you are experimenting an error, or an unusual behavior. Please let me know,  
 
 You are welcome to contribute to this project, whenever you want.
 
-**Install dependencies**
-
-This project uses pipenv as environment and package manager, follow the instructions below and start contributing.
+The package has **no runtime dependencies** — all HTTP traffic uses the
+Python standard library. Development uses the repository's local virtualenv
+(Python 3.14):
 
 ```
-$ pipenv --python 3.7
-$ pipenv install
+$ python3.14 -m venv .venv
+$ .venv/bin/python -m pip install -r requirements-dev.txt
 ```
 
 **Run tests**
 
 ```
-$ pipenv run nosetests tests
+$ .venv/bin/python -m pytest tests/ -q
+$ .venv/bin/python -m flake8 sync_settings_reborn tests
 ```
 
 
@@ -214,15 +211,3 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
-
-## Help me keep making awesome stuff
-
-Contribute with me, supporting this project through
-
-[![Become a backer](https://opencollective.com/syncsettings/tiers/backer.svg?avatarHeight=50)](https://opencollective.com/syncsettings)
-
-[![Become a backer](https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/PayPal.svg/100px-PayPal.svg.png)](https://opencollective.com/syncsettings)
-
-<a href="https://www.buymeacoffee.com/mfuentesg" target="_blank">
-   <img height="41" src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" />
-</a>

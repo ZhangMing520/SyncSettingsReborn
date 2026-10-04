@@ -1,3 +1,49 @@
+## v4.2.2 — drop the `requests` dependency (stdlib HTTP layer)
+
+The package no longer depends on Package Control's `requests` package. The
+copy distributed via the official channel is pinned to upstream requests
+2.15.1 (2017), which cannot import on current Sublime builds running Python
+3.14: its vendored urllib3 does `from collections import Mapping` (removed in
+Python 3.10) and its `requests.utils` imports `cgi` (removed in Python 3.13).
+The declared transitive dependencies (`urllib3`, `idna`, `certifi`,
+`charset_normalizer`) do not exist in the channel, so they could not fix it.
+
+- All HTTP traffic now goes through a new small standard-library layer
+  (`sync_settings_reborn/libs/http.py`) built on `urllib.request`: gist API
+  verbs, raw-url file downloads (manual Download and auto-sync), proxy
+  settings (`http_proxy` / `https_proxy`), and timeouts; transport errors
+  surface as the same `NetworkError`.
+- Behaviour the switch had to re-establish explicitly, each pinned by
+  `tests/test_http.py`:
+  - `download()` writes its target **only on a final 200**. Any other status,
+    including another 2xx such as 204/206, leaves the file untouched —
+    `fetch_files` installs whatever lands in its temp directory, and an empty
+    body would overwrite a real settings file.
+  - A configured `http_proxy` / `https_proxy` is **merged with** the
+    `HTTP_PROXY` / `HTTPS_PROXY` environment per scheme instead of replacing it:
+    `urllib`'s `ProxyHandler` only builds a handler for the schemes it is given,
+    so an explicit `http_proxy` alone would otherwise send `api.github.com`
+    direct.
+  - Requests send `Accept-Encoding: identity`, and a body that still declares a
+    `Content-Encoding` is refused as a `NetworkError` rather than written out.
+  - `Authorization` is sent as an unredirected header, so a redirect to another
+    host cannot replay the token.
+  - `urllib` does not redirect PATCH/DELETE, so a 3xx on a write surfaces as an
+    `UnexpectedError` instead of a retried (possibly duplicated) write.
+- Removed `dependencies.json` — the package now has zero Package Control
+  runtime dependencies. Certificate verification uses the host trust store,
+  which is what `requests` fell back to here too, since `certifi` is not a
+  channel dependency and was never installed.
+- Added `.python-version` (`3.8`) so the plugin runs on the modern Python
+  host on all 4050+ builds (3.8 on 4050–4204, the 3.8-compatible 3.14 host on
+  4205+) instead of falling back to the legacy 3.3 host.
+- **Sublime Text 3 is no longer supported.** It has in fact been unloadable
+  since v4.2.0 (`auto_sync.py` uses `dataclasses`, Python 3.7+, while ST3
+  only ships the 3.3 host); the README now states the real requirement —
+  Sublime Text 4, build 4050 or newer — and the Package Control channel
+  entry declares `"python_versions": ["3.8"]` so ST3 users are not offered
+  the package.
+
 ## v4.2.1 — packaging: exclude dev/test files from distribution
 
 Added `.gitattributes` so Package Control's per-tag `git archive` no longer

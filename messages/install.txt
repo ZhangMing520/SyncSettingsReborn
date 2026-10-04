@@ -24,6 +24,19 @@ Getting started
     2. Put the token in the `access_token` setting.
     3. Run `SyncSettingsReborn: Upload` (it creates a new Gist the first time, then updates it on later runs).
 
+Other sync methods (no GitHub account needed)
+
+- `Backup to Zip` / `Restore from Zip`: offline portable archive of your
+  Packages/User folder.
+- `Backup Package List`: back up just the installed-package list.
+- `Sync Online` (`Define Folder` / `Push` / `Pull`): sync a zip through a
+  Dropbox / Google Drive / OneDrive folder.
+
+Docs: README.md (English) / README.zh-CN.md (简体中文) in the package folder
+or at https://github.com/ZhangMing520/SyncSettingsReborn#readme
+
+Requires Sublime Text 4 (build 4050 or newer).
+
 Issues
 
 If you hit an error or unusual behavior, please report it at
