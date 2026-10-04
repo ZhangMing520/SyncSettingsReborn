@@ -28,11 +28,10 @@ import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set
 
-import requests
 import sublime
 
-from .libs import settings, path
-from .libs.gist import Gist, NotFoundError, REQUEST_TIMEOUT
+from .libs import settings, path, http
+from .libs.gist import Gist, NotFoundError
 from .libs.logger import logger
 from . import sync_version as version, sync_manager as manager
 
@@ -205,8 +204,7 @@ def _normalise_gist_files(g, proxies=None, only_keys=None):
         raw_url = meta.get('raw_url') if isinstance(meta, dict) else None
         if raw_url:
             try:
-                r = requests.get(raw_url, proxies=proxies,
-                                 timeout=REQUEST_TIMEOUT)
+                r = http.request('GET', raw_url, proxies=proxies)
             except Exception as e:
                 logger.warning('auto-sync could not fetch raw file: {}'.format(raw_url))
                 logger.exception(e)

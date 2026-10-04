@@ -6,7 +6,7 @@ import tempfile
 import unittest
 import mock
 
-import requests
+from sync_settings_reborn.libs import http as http_lib
 
 from sync_settings_reborn import auto_sync
 from sync_settings_reborn.libs.gist import NotFoundError
@@ -623,7 +623,7 @@ class TestFetchRemote(unittest.TestCase):
     def _run_fetch(self, urls, http=None, last_rev=None, proxies=None,
                    require=None):
         """Common scaffolding: a listing at revision r2 carrying ``urls``
-        ({encoded_name: raw_url}), one Gist client, and a requests.get
+        ({encoded_name: raw_url}), one Gist client, and an http.request
         stand-in (``http`` may be a callable(url, **kw) or a fixed response).
         Returns ``((rev, committed_at, files, name_map), get_mock)``.
         """
@@ -638,10 +638,16 @@ class TestFetchRemote(unittest.TestCase):
             'sync_settings_reborn.auto_sync.settings.get', return_value='g1')
         settings_p.start()
         self.addCleanup(settings_p.stop)
+
+        def _adapt(method, url, **kw):
+            if callable(http):
+                return http(url, **kw)
+            return http
+
         with mock.patch('sync_settings_reborn.auto_sync.Gist.from_settings',
                         return_value=client), \
-                mock.patch('sync_settings_reborn.auto_sync.requests.get',
-                           side_effect=http) as get_req:
+                mock.patch('sync_settings_reborn.auto_sync.http.request',
+                           side_effect=_adapt) as get_req:
             return auto_sync._fetch_remote(last_rev, only_keys=require), get_req
 
     def test_fetches_remote_content_via_raw_url(self):
@@ -663,7 +669,7 @@ class TestFetchRemote(unittest.TestCase):
 
     def test_raw_fetch_failure_is_skipped_not_deleted(self):
         def _boom(url, **kw):
-            raise requests.exceptions.RequestException('boom')
+            raise http_lib.NetworkError('boom')
 
         (rev, _, files, _), _ = self._run_fetch(
             {'A.sublime-settings': 'http://a'}, http=_boom)
@@ -699,7 +705,7 @@ class TestFetchRemote(unittest.TestCase):
             require={'A.sublime-settings'})
         self.assertEqual(rev, 'r2')
         self.assertEqual(files, {'A.sublime-settings': 'x'})
-        self.assertEqual([c.args[0] for c in get_req.call_args_list],
+        self.assertEqual([c.args[1] for c in get_req.call_args_list],
                          ['http://a'])
 
     def test_name_map_canonicalises_foreign_filenames(self):
@@ -761,7 +767,7 @@ class TestRestoredBaseline(_TempUserDirCase):
             'A.sublime-settings': {'raw_url': 'http://a'},
             'B.sublime-settings': {'raw_url': 'http://b'},
         }}
-        with mock.patch('sync_settings_reborn.auto_sync.requests.get') as get_req:
+        with mock.patch('sync_settings_reborn.auto_sync.http.request') as get_req:
             baseline = auto_sync._restored_baseline(g)
         get_req.assert_not_called()
         self.assertEqual(baseline, {'A.sublime-settings': auto_sync._sha('aaa')})

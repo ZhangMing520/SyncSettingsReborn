@@ -2,16 +2,12 @@
 
 import json
 import re
-import requests
 from functools import wraps
 
+from . import http as http_lib
+from .http import NetworkError
 from .logger import logger
 from . import settings
-
-
-# Bound every request (including the background auto-sync loop) so a hanging
-# connection can never pin a worker thread forever.
-REQUEST_TIMEOUT = 30
 
 # Compiled once: proxies is consulted on every HTTP request.
 _PROXY_URL_RE = re.compile(
@@ -28,10 +24,6 @@ class NotFoundError(RuntimeError):
 
 
 class UnexpectedError(RuntimeError):
-    pass
-
-
-class NetworkError(RuntimeError):
     pass
 
 
@@ -87,14 +79,14 @@ class Gist:
     def create(self, data):
         if not isinstance(data, dict) or not len(data):
             raise ValueError('Gist can`t be created without data')
-        return self.__do_request('post', self.make_uri(), data=json.dumps(data)).json()
+        return self.__do_request('post', self.make_uri(), json.dumps(data)).json()
 
     @auth
     @with_gid
     def update(self, gid, data):
         if not isinstance(data, dict) or not len(data):
             raise ValueError('Gist can`t be updated without data')
-        return self.__do_request('patch', self.make_uri(gid), data=json.dumps(data)).json()
+        return self.__do_request('patch', self.make_uri(gid), json.dumps(data)).json()
 
     @auth
     @with_gid
@@ -110,12 +102,11 @@ class Gist:
     def commits(self, gid):
         return self.__do_request('get', self.make_uri('{}/commits'.format(gid))).json()
 
-    def __do_request(self, verb, url, **kwargs):
+    def __do_request(self, verb, url, data=None):
         try:
-            response = getattr(requests, verb)(url, headers=self.headers,
-                                               proxies=self.proxies,
-                                               timeout=REQUEST_TIMEOUT, **kwargs)
-        except requests.exceptions.RequestException as e:
+            response = http_lib.request(verb, url, headers=self.headers,
+                                        data=data, proxies=self.proxies)
+        except NetworkError as e:
             raise NetworkError('Can`t perform this action due to network errors. reason: {}'.format(str(e)))
         if response.status_code >= 300:
             logger.warning(response.text)

@@ -3,7 +3,6 @@
 import unittest
 import mock
 import os
-import io
 import json
 import tempfile
 import shutil
@@ -557,29 +556,29 @@ class FetchFilesProxyAndCanonicalTest(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     @staticmethod
-    def _fake_resp():
-        resp = mock.MagicMock()
-        resp.status_code = 200
-        resp.raw = io.BytesIO(b'')
-        return resp
+    def _fake_download(url, name, proxies=None, timeout=None):
+        # http.download streams the bytes into name itself.
+        with open(name, 'wb') as f:
+            f.write(b'')
+        return 200
 
-    @mock.patch('sync_settings_reborn.sync_manager.requests.get')
+    @mock.patch('sync_settings_reborn.sync_manager.http.download')
     @mock.patch('sync_settings_reborn.sync_manager.Gist')
-    def test_fetch_files_passes_configured_proxy(self, Gist, get):
+    def test_fetch_files_passes_configured_proxy(self, Gist, download):
         # Manual Download must honour the same proxy config as the gist API.
         Gist.from_settings.return_value.proxies = {'https': 'http://proxy:3128'}
-        get.return_value = self._fake_resp()
+        download.side_effect = self._fake_download
         target = os.path.join(self.tmp, 'temp')
         manager.fetch_files({'A.sublime-settings': {'raw_url': 'http://a'}}, to=target)
-        get.assert_called_once()
-        self.assertEqual(get.call_args.kwargs['proxies'],
+        download.assert_called_once()
+        self.assertEqual(download.call_args.kwargs['proxies'],
                          {'https': 'http://proxy:3128'})
 
-    @mock.patch('sync_settings_reborn.sync_manager.requests.get')
+    @mock.patch('sync_settings_reborn.sync_manager.http.download')
     @mock.patch('sync_settings_reborn.sync_manager.Gist')
-    def test_fetch_files_canonicalises_external_key(self, Gist, get):
+    def test_fetch_files_canonicalises_external_key(self, Gist, download):
         Gist.from_settings.return_value.proxies = {}
-        get.return_value = self._fake_resp()
+        download.side_effect = self._fake_download
         target = os.path.join(self.tmp, 'temp')
         # An external gist carries a literal path separator in the filename.
         manager.fetch_files({'sub/C.sublime-settings': {'raw_url': 'http://c'}}, to=target)
@@ -588,11 +587,11 @@ class FetchFilesProxyAndCanonicalTest(unittest.TestCase):
         self.assertTrue(os.path.exists(
             os.path.join(target, 'sub%2FC.sublime-settings')))
 
-    @mock.patch('sync_settings_reborn.sync_manager.requests.get')
+    @mock.patch('sync_settings_reborn.sync_manager.http.download')
     @mock.patch('sync_settings_reborn.sync_manager.Gist')
-    def test_fetch_files_skips_missing_raw_url(self, Gist, get):
+    def test_fetch_files_skips_missing_raw_url(self, Gist, download):
         Gist.from_settings.return_value.proxies = {}
-        get.return_value = self._fake_resp()
+        download.side_effect = self._fake_download
         target = os.path.join(self.tmp, 'temp')
         # A gist entry missing raw_url (e.g. a truncated/deleted file) must be
         # skipped, not raise mid-loop; a sibling with a raw_url still downloads.
@@ -600,7 +599,7 @@ class FetchFilesProxyAndCanonicalTest(unittest.TestCase):
             'A.sublime-settings': {'raw_url': 'http://a'},
             'B.sublime-settings': {},
         }, to=target)
-        get.assert_called_once()
-        self.assertEqual(get.call_args.args[0], 'http://a')
+        download.assert_called_once()
+        self.assertEqual(download.call_args.args[0], 'http://a')
         self.assertFalse(os.path.exists(
             os.path.join(target, 'B.sublime-settings')))

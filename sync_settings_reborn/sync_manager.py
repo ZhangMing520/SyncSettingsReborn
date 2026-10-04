@@ -4,14 +4,13 @@ from fnmatch import fnmatch
 import os
 import json
 import re
-import requests
 import shutil
 import sublime
 import threading
 import time
 
-from .libs import path, settings, file
-from .libs.gist import Gist, REQUEST_TIMEOUT
+from .libs import path, settings, file, http
+from .libs.gist import Gist
 from .libs.logger import logger
 
 from queue import Queue
@@ -259,14 +258,11 @@ def download_file(q):
     while not q.empty():
         url, name, proxies = q.get()
         try:
-            r = requests.get(url, stream=True, timeout=REQUEST_TIMEOUT,
-                             proxies=proxies)
-            if r.status_code == 200:
-                with open(name, 'wb') as f:
-                    r.raw.decode_content = True
-                    shutil.copyfileobj(r.raw, f)
-            else:
-                logger.warning('download skipped (status {}): {}'.format(r.status_code, url))
+            status = http.download(url, name, proxies=proxies)
+            if status != 200:
+                # Nothing was written for a non-200: download() owns that rule,
+                # since fetch_files installs whatever is in the temp dir.
+                logger.warning('download skipped (status {}): {}'.format(status, url))
         except Exception as e:
             # Never swallow silently: a failed per-file download would leave an
             # empty temp dir and the restore step would appear to "do nothing".
@@ -375,6 +371,7 @@ def install_missing_packages(remote_packages):
         if window is None:
             logger.warning('no active window; skipping install of packages: {}'.format(names))
             return
+
         # Dispatch on the main thread: this runs from a background worker (the
         # auto-sync loop and the Download command thread), and running a window
         # command from off the main thread is not the documented-safe path.

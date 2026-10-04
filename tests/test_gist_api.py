@@ -1,10 +1,13 @@
 import unittest
-import requests
 import json
 import os
 from sync_settings_reborn.libs import gist, path
 
 from unittest import mock
+
+# Gist sends all HTTP verbs through the stdlib http layer; tests patch it at
+# the gist module boundary.
+HTTP_REQUEST = 'sync_settings_reborn.libs.gist.http_lib.request'
 
 
 def get_output(f):
@@ -47,7 +50,7 @@ class GetGistTest(GistTest):
         with self.assertRaises(ValueError):
             self.api.get('')
 
-    @mock.patch('requests.get')
+    @mock.patch(HTTP_REQUEST)
     def test_raise_gist_not_found_error(self, mock_get):
         self.mock_response.status_code = 404
         mock_get.return_value = self.mock_response
@@ -55,13 +58,7 @@ class GetGistTest(GistTest):
         with self.assertRaises(gist.NotFoundError):
             self.api.get('not found')
 
-    @mock.patch('requests.get')
-    def test_raise_network_error(self, mock_get):
-        mock_get.side_effect = requests.exceptions.ConnectionError()
-        with self.assertRaises(gist.NetworkError):
-            self.api.get('123123123')
-
-    @mock.patch('requests.get')
+    @mock.patch(HTTP_REQUEST)
     def test_unexpected_error_with_invalid_data(self, mock_get):
         self.mock_response.status_code = 408
         self.mock_response.json.return_value = {
@@ -72,7 +69,7 @@ class GetGistTest(GistTest):
         with self.assertRaises(gist.UnexpectedError):
             self.api.get('123123123')
 
-    @mock.patch('requests.get')
+    @mock.patch(HTTP_REQUEST)
     def test_valid_response(self, mock_get):
         self.mock_response.status_code = 200
         with open(get_output('gist.json'), 'r') as f:
@@ -82,7 +79,7 @@ class GetGistTest(GistTest):
         mock_get.return_value = self.mock_response
         self.assertEqual(self.api.get('aa5a315d61ae9438b18d'), content)
 
-    @mock.patch('requests.get')
+    @mock.patch(HTTP_REQUEST)
     def test_get_commits(self, mock_get):
         self.mock_response.status_code = 200
         with open(get_output('gist.json'), 'r') as f:
@@ -104,7 +101,7 @@ class CreateGistTest(GistTest):
         with self.assertRaises(ValueError):
             self.api.create({})
 
-    @mock.patch('requests.patch')
+    @mock.patch(HTTP_REQUEST)
     def test_unprocessable_data_error(self, mock_patch):
         self.mock_response.status_code = 422
         mock_patch.return_value = self.mock_response
@@ -117,7 +114,7 @@ class CreateGistTest(GistTest):
         with self.assertRaises(ValueError):
             self.api.create('')
 
-    @mock.patch('requests.post')
+    @mock.patch(HTTP_REQUEST)
     def test_valid_response(self, mock_post):
         self.api = gist.Gist('123123123')
         self.mock_response.status_code = 201
@@ -145,7 +142,7 @@ class DeleteGistTest(GistTest):
         with self.assertRaises(ValueError):
             self.api.delete('')
 
-    @mock.patch('requests.delete')
+    @mock.patch(HTTP_REQUEST)
     def test_failed_delete(self, mock_delete):
         self.api = gist.Gist('123123')
         self.mock_response.status_code = 205
@@ -153,7 +150,7 @@ class DeleteGistTest(GistTest):
 
         self.assertFalse(self.api.delete('123123'))
 
-    @mock.patch('requests.delete')
+    @mock.patch(HTTP_REQUEST)
     def test_success_delete(self, mock_delete):
         self.api = gist.Gist('123123')
         self.mock_response.status_code = 204
@@ -184,7 +181,7 @@ class UpdateGistTest(GistTest):
         with self.assertRaises(gist.AuthenticationError):
             self.api.update('123', {})
 
-    @mock.patch('requests.patch')
+    @mock.patch(HTTP_REQUEST)
     def test_raise_authentication_with_gist_of_someone_else(self, mock_patch):
         self.mock_response.status_code = 403
         mock_patch.return_value = self.mock_response

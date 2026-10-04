@@ -71,6 +71,7 @@ mods_load_order = [
     '.libs.logger',
     '.libs.path',
     '.libs.settings',
+    '.libs.http',
     '.libs.gist',
 
     '.thread_progress',
