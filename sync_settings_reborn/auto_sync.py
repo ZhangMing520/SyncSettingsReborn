@@ -28,18 +28,20 @@ import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set
 
-# Serialises gist *creation* so a manual Upload and the auto-sync loop can't
-# both see an empty `gist_id` and each create a gist. The first to acquire it
-# creates and writes `gist_id`; the second re-reads `gist_id` inside the lock
-# and takes the update path instead.
-_gist_create_lock = threading.Lock()
-
 import sublime
 
 from .libs import settings, path, http
 from .libs.gist import Gist, NotFoundError
 from .libs.logger import logger
 from . import sync_version as version, sync_manager as manager
+
+# Guards the create-and-record-gist_id step in `acquire_gist_id`, the only user.
+#
+# This is the INNERMOST lock. Never acquire `AutoSync._lock` (or anything that
+# takes it, i.e. `adopt()`) while holding it: the daemon cycle takes `_lock`
+# first and only then this one, so the reverse order deadlocks — and since
+# `_lock` is held across network I/O, both sides stall silently.
+_gist_create_lock = threading.Lock()
 
 
 DEFAULT_INTERVAL_SECONDS = 300  # 5 minutes
@@ -324,6 +326,33 @@ def _apply_remote(remote_files, to_pull):
         logger.exception(e)
 
 
+def acquire_gist_id(create):
+    """Return ``(gist_id, created)``, creating the gist exactly once.
+
+    ``created`` is the new gist's response when *this* call created it, else
+    ``None`` and the caller must update ``gist_id`` itself.
+
+    A manual Upload and the background auto-sync loop can both read an empty
+    `gist_id` and each create a gist, leaving an orphan. Only the caller that
+    wins `_gist_create_lock` creates and records the id; the loser re-reads it
+    inside the lock and gets the winner's id, so it takes its update path
+    instead. The lock is held across the create request only — never across the
+    caller's follow-up listing/PATCH — and this returns after releasing it, so
+    callers cannot accidentally hold it while adopting.
+    """
+    gid = settings.get('gist_id')
+    if gid:
+        return gid, None
+    with _gist_create_lock:
+        gid = settings.get('gist_id')
+        if gid:
+            return gid, None
+        g = create()
+        settings.update('gist_id', g['id'])
+        logger.info('created gist {}'.format(g['id']))
+        return g['id'], g
+
+
 def _push(payload):
     """Upload a gist ``files`` payload: ``{name: {'content': ...}}`` to update
     a file, ``{name: None}`` to delete one (Gist PATCH semantics).
@@ -342,22 +371,12 @@ def _push(payload):
     try:
         gist_api = Gist.from_settings()
         data = {'files': payload}
-        if gid:
-            g = gist_api.update(gid, data=data)
-        else:
-            # Single-flight: a concurrent manual Upload may have created the
-            # gist while we waited. Re-check inside the lock and update the
-            # existing gist instead of forking a second one.
-            with _gist_create_lock:
-                gid = settings.get('gist_id')
-                if gid:
-                    g = gist_api.update(gid, data=data)
-                else:
-                    data['description'] = 'SyncSettingsReborn backup'
-                    g = gist_api.create(data)
-                    settings.update('gist_id', g['id'])
-                    logger.info('auto-sync created gist {}'.format(g['id']))
-            return g
+        if not gid:
+            gid, created = acquire_gist_id(lambda: gist_api.create(
+                dict(data, description='SyncSettingsReborn backup')))
+            if created is not None:
+                return created
+        return gist_api.update(gid, data=data)
     except Exception as e:
         logger.exception(e)
         return None
@@ -416,7 +435,7 @@ class AutoSync:
         # runs on a ThreadProgress worker and calls adopt(). Without it the two
         # can interleave their read-modify-write of the sync state and persist a
         # stale baseline over a fresh one. Only _run and adopt take it, so a
-        # plain Lock suffices.
+        # plain Lock suffices. Lock order: see `_gist_create_lock`.
         self._lock = threading.Lock()
         # The snapshot we last synced (per-file content hashes). This is the
         # common ancestor used to compute local vs remote deltas, and it is

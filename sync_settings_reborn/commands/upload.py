@@ -40,6 +40,18 @@ class SyncSettingsRebornUploadCommand(sublime_plugin.WindowCommand):
         name_map = auto_sync._name_map(g)
         return name_map, {k for k in deleted if k in name_map}
 
+    def _upload_into_existing(self, gist_api, gid, files):
+        """PATCH ``files`` into gist ``gid``, converging its real filenames.
+
+        Gist PATCH is a merge: files absent from the payload are kept on the
+        gist, so this only ever sends what this machine knows.
+        """
+        name_map, removable = self._remote_names_and_deletions(gist_api, gid, files)
+        payload, _ = auto_sync._build_payload(
+            set(files) | removable, files,
+            auto_sync._content_hashes(files), {}, name_map)
+        return gist_api.update(gid, data={'files': payload})
+
     def upload(self, installed=None):
         files = manager.get_files(installed=installed)
         if not len(files):
@@ -50,40 +62,17 @@ class SyncSettingsRebornUploadCommand(sublime_plugin.WindowCommand):
         logger.info('uploading {} file(s) to gist {}'.format(len(files), gid or '(new)'))
         try:
             gist_api = gist.Gist.from_settings()
-            if gid:
-                # Gist PATCH is a merge: files absent from the payload are kept
-                # on the gist. The listing maps real remote names (foreign
-                # tools keep literal separators) to our canonical keys, and
-                # resolves this machine's eligible deletions.
-                name_map, removable = self._remote_names_and_deletions(
-                    gist_api, gid, files)
-                payload, _ = auto_sync._build_payload(
-                    set(files) | removable, files,
-                    auto_sync._content_hashes(files), {}, name_map)
-                # Update the existing gist.
-                g = gist_api.update(gid, data={'files': payload})
-            else:
-                # No gist yet. A concurrent auto-sync cycle may create one while
-                # we wait, so re-check inside the lock and update that gist
-                # instead of forking a second one.
-                with auto_sync._gist_create_lock:
-                    gid = settings.get('gist_id')
-                    if gid:
-                        name_map, removable = self._remote_names_and_deletions(
-                            gist_api, gid, files)
-                        payload, _ = auto_sync._build_payload(
-                            set(files) | removable, files,
-                            auto_sync._content_hashes(files), {}, name_map)
-                        g = gist_api.update(gid, data={'files': payload})
-                    else:
-                        # No gist yet: create one and remember it so the next
-                        # upload updates instead of creating again. No
-                        # description prompt, no "backfill gist_id?" question —
-                        # this is the one-click reset path.
-                        g = gist_api.create(
-                            {'files': files, 'description': 'SyncSettingsReborn backup'})
-                        settings.update('gist_id', g['id'])
-                        logger.info('created new gist {}'.format(g['id']))
+            g = None
+            if not gid:
+                # No gist yet: create one and remember it so the next upload
+                # updates instead of creating again. Single-flight, so a
+                # concurrent auto-sync cycle can't fork a second gist. No
+                # description prompt, no "backfill gist_id?" question — this is
+                # the one-click reset path.
+                gid, g = auto_sync.acquire_gist_id(lambda: gist_api.create(
+                    {'files': files, 'description': 'SyncSettingsReborn backup'}))
+            if g is None:
+                g = self._upload_into_existing(gist_api, gid, files)
             commit = g['history'][0]
             version.update_config_file({
                 'hash': commit['version'],

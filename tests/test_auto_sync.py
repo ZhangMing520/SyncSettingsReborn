@@ -6,6 +6,8 @@ import tempfile
 import unittest
 import mock
 
+from .mocks import gist_race
+
 from sync_settings_reborn.libs import http as http_lib
 
 from sync_settings_reborn import auto_sync
@@ -517,6 +519,58 @@ class TestMissingGist(unittest.TestCase):
         self.assertIsNone(self.svc._missing_gist)
 
 
+class TestAcquireGistId(unittest.TestCase):
+    """The single-flight primitive both `_push` and the Upload command share."""
+
+    def _patch(self, race):
+        return (mock.patch('sync_settings_reborn.auto_sync.settings.get',
+                           side_effect=race.settings_get),
+                mock.patch('sync_settings_reborn.auto_sync.settings.update',
+                           side_effect=race.settings_set))
+
+    def _create(self, race):
+        # The primitive supplies no payload: the caller's closure owns it.
+        return lambda: race.api.create({'files': {'A.sublime-settings': None}})
+
+    def test_returns_configured_id_without_creating(self):
+        race = gist_race.SingleFlightRace()
+        race.store['gist_id'] = 'g-existing'
+        get, update = self._patch(race)
+        with get, update:
+            gid, created = auto_sync.acquire_gist_id(self._create(race))
+        self.assertEqual((gid, created), ('g-existing', None))
+        race.api.create.assert_not_called()
+
+    def test_racing_callers_create_exactly_one_gist(self):
+        # Both racers read an empty gist_id before either may create, so this is
+        # the shape that used to fork two gists and leave an orphan.
+        race = gist_race.SingleFlightRace()
+        results = []
+        get, update = self._patch(race)
+        with get, update:
+            def one():
+                results.append(auto_sync.acquire_gist_id(self._create(race)))
+            race.race(one)
+        self.assertEqual(len(race.created), 1, 'only one gist should be created')
+        self.assertEqual(sorted(gid for gid, _ in results), ['g-new', 'g-new'])
+        self.assertEqual(sorted(bool(c is not None) for _, c in results),
+                         [False, True],
+                         'exactly one caller may report the gist it created')
+
+    def test_lock_is_released_when_it_returns(self):
+        # Callers update the gist after this function returns; the create lock
+        # must not still be held, and must never be held across adopt().
+        race = gist_race.SingleFlightRace()
+        get, update = self._patch(race)
+        for configured in ('', 'g-existing'):
+            race.store['gist_id'] = configured
+            with get, update:
+                auto_sync.acquire_gist_id(self._create(race))
+            self.assertTrue(auto_sync._gist_create_lock.acquire(blocking=False),
+                            'acquire_gist_id returned still holding the lock')
+            auto_sync._gist_create_lock.release()
+
+
 class TestPush(unittest.TestCase):
     @mock.patch('sync_settings_reborn.auto_sync.version.update_config_file')
     @mock.patch('sync_settings_reborn.auto_sync.settings.update')
@@ -539,6 +593,23 @@ class TestPush(unittest.TestCase):
             self.assertIsNone(
                 auto_sync._push({'A.sublime-settings': None}))
             api.assert_not_called()
+
+    def test_create_is_single_flight(self):
+        # Two auto-sync pushes with an empty gist_id — the same race a manual
+        # Upload joins — must create one gist; the loser updates the winner's.
+        race = gist_race.SingleFlightRace()
+        payload = {'A.sublime-settings': {'content': 'x'}}
+        with mock.patch('sync_settings_reborn.auto_sync.Gist.from_settings',
+                        return_value=race.api), \
+                mock.patch('sync_settings_reborn.auto_sync.settings.get',
+                           side_effect=race.settings_get), \
+                mock.patch('sync_settings_reborn.auto_sync.settings.update',
+                           side_effect=race.settings_set):
+            race.race(lambda: auto_sync._push(payload))
+        self.assertEqual(len(race.created), 1, 'only one gist should be created')
+        self.assertEqual(race.store['gist_id'], 'g-new')
+        self.assertEqual(race.updated, ['g-new'],
+                         'the losing push must update, not create')
 
 
 class TestInitialPush(unittest.TestCase):

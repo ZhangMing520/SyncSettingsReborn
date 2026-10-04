@@ -102,6 +102,23 @@ A local `.venv` (Python 3.14) is available and works in the sandbox:
   (`_sync_once`) against `adopt()` (called by manual Upload/Download and at
   startup). `_sync_once` never calls `adopt`, so the non-reentrant `Lock` is
   safe — keep it that way. Long-held lock across network I/O is intentional.
+- **Gist-creation single-flight.** Anyone that may create a gist goes through
+  `auto_sync.acquire_gist_id(create)` — never a hand-rolled
+  `settings.get('gist_id')` check followed by `create()`. A background cycle and
+  a manual Upload can both read an empty `gist_id`, and without this each
+  creates its own gist (an orphan). The primitive holds `_gist_create_lock` only
+  across create-and-record, re-reading `gist_id` inside it, and returns
+  `(gid, created)`: `created` is the new gist's response for the winner only, so
+  every other caller takes its update path against the winner's id. Its own
+  listing/PATCH therefore never runs under the lock, and the lock never escapes
+  `auto_sync.py`. Lock order: `AutoSync._lock` (outer) → `_gist_create_lock`
+  (inner); never acquire `_lock` — directly or via `adopt()` — while holding the
+  create lock, or the two threads deadlock.
+  `tests/test_auto_sync.py::TestAcquireGistId` pins the primitive (one create
+  among racing callers, lock released on return) and `TestPush` /
+  `tests/test_commands.py` pin both callers' wiring;
+  `tests/mocks/gist_race.py::SingleFlightRace` is the shared, sleep-free harness
+  (racers rendezvous at their first `gist_id` read).
 - **Binary files.** `get_content` decodes as UTF-8 and returns `''` on
   `UnicodeDecodeError` (file is then not uploaded). Never broad-except this away.
 

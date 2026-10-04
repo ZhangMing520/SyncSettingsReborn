@@ -4,9 +4,9 @@ import os
 import shutil
 import tempfile
 import mock
-import threading
-import time
 import unittest
+
+from .mocks import gist_race
 
 from sync_settings_reborn import backup
 from sync_settings_reborn import sync_manager as manager
@@ -263,53 +263,21 @@ class UploadCommandTest(unittest.TestCase):
         m_create.assert_not_called()
 
     def test_upload_single_flight_against_concurrent_create(self):
-        # A manual Upload racing an auto-sync cycle (or a double-click) both see
-        # an empty gist_id. Only one gist may be created; the loser must update
-        # the gist the winner created, never fork a second one.
-        store = {}
-
-        def fake_get(k):
-            if k == 'gist_id':
-                return store.get('gist_id', '')
-            return 'tok'
-
-        def fake_set(k, v):
-            store[k] = v
-
-        fake_gist = {
-            'id': 'g-new',
-            'history': [{'version': 'v', 'committed_at': 't'}],
-        }
-        created = []
-        updated = []
-
-        def slow_create(data):
-            time.sleep(0.05)  # widen the window both threads are mid-flight
-            created.append(1)
-            return fake_gist
-
-        def fake_update(gid, data=None):
-            updated.append(gid)
-            return fake_gist
-
-        api = mock.MagicMock()
-        api.create.side_effect = slow_create
-        api.update.side_effect = fake_update
-        with mock.patch.object(manager, 'get_files', return_value={'a.sublime-settings': {'content': '{}'}}), \
-                mock.patch.object(gist.Gist, 'from_settings', return_value=api), \
-                mock.patch.object(settings, 'get', side_effect=fake_get), \
-                mock.patch.object(settings, 'update', side_effect=fake_set), \
+        # Two Uploads with an empty gist_id (the same race an auto-sync cycle
+        # joins) must create one gist; the loser must update the winner's.
+        race = gist_race.SingleFlightRace()
+        with mock.patch.object(manager, 'get_files',
+                               return_value={'a.sublime-settings': {'content': '{}'}}), \
+                mock.patch.object(gist.Gist, 'from_settings', return_value=race.api), \
+                mock.patch.object(settings, 'get', side_effect=race.settings_get), \
+                mock.patch.object(settings, 'update', side_effect=race.settings_set), \
                 mock.patch.object(version, 'update_config_file'), \
                 mock.patch.object(upload.auto_sync, 'adopt_manual_upload'):
-            t1 = threading.Thread(target=self.cmd.upload)
-            t2 = threading.Thread(target=self.cmd.upload)
-            t1.start()
-            t2.start()
-            t1.join()
-            t2.join()
-        self.assertEqual(len(created), 1, 'only one gist should be created')
-        self.assertEqual(store.get('gist_id'), 'g-new')
-        self.assertEqual(updated, ['g-new'], 'the second upload must update, not create')
+            race.race(self.cmd.upload)
+        self.assertEqual(len(race.created), 1, 'only one gist should be created')
+        self.assertEqual(race.store['gist_id'], 'g-new')
+        self.assertEqual(race.updated, ['g-new'],
+                         'the second upload must update, not create')
 
     def test_upload_forwards_main_thread_snapshot(self):
         # run() takes the list_packages() snapshot on the main thread; the worker
