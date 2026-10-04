@@ -18,6 +18,10 @@ What changes for you:
 - No Package Control dependencies are installed for this package anymore.
 - A .python-version file (3.8) was added so the plugin runs on the modern
   Python host on Sublime Text 4 builds 4050 and newer.
+- Fixed a race that could create two Gists: when no gist id was set (e.g.
+  right after Delete then Upload), a manual Upload and a background auto-sync
+  could each create a Gist and leave an orphan. Gist creation is now
+  single-flight, so the second one updates the Gist the first created.
 
 System requirement: Sublime Text 4 (build 4050 or newer). Sublime Text 3
 (which only provides the legacy Python 3.3 host) is no longer supported.
