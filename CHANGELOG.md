@@ -1,3 +1,9 @@
+## v4.2.1 — packaging: exclude dev/test files from distribution
+
+Added `.gitattributes` so Package Control's per-tag `git archive` no longer
+ships `tests/`, `.github/`, Pipfile, and other dev artifacts into users'
+`Packages/SyncSettingsReborn/`. No runtime behaviour change.
+
 ## v4.2.0 — command redesign and hardening
 
 - **`Upload` is now create-or-update.** When `gist_id` is empty it creates a new

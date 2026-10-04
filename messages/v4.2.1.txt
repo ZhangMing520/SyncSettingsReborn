@@ -1,0 +1,6 @@
+SyncSettingsReborn v4.2.1
+
+Packaging-only update: added .gitattributes so the Package Control
+distribution (per-tag git archive) no longer includes tests/, .github/, and
+other dev artifacts in your Packages/SyncSettingsReborn/ folder. No behaviour
+change.

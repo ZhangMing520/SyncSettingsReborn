@@ -1,0 +1,17 @@
+# Keep the installed Package Control distribution lean: exclude dev/test
+# artifacts. `git archive` (what Package Control uses per tag) honours
+# `export-ignore`, so these never ship to users' Packages/ folder.
+tests/                export-ignore
+.github/              export-ignore
+__pycache__/          export-ignore
+.pytest_cache/        export-ignore
+.venv/                export-ignore
+Pipfile               export-ignore
+Pipfile.lock          export-ignore
+.flake8               export-ignore
+.editorconfig         export-ignore
+.all-contributorsrc   export-ignore
+.zcodeignore          export-ignore
+SUBMISSION.md         export-ignore
+AGENTS.md             export-ignore
+CHANGELOG.md          export-ignore
