@@ -1,3 +1,9 @@
+## v4.2.3
+
+- Added a Command Palette entry `SyncSettingsReborn: Edit Settings` that opens
+  the package settings through `edit_settings` (with defaults shown alongside
+  user overrides), replacing the previous `open_file` entry.
+
 ## v4.2.2 — drop the `requests` dependency (stdlib HTTP layer)
 
 The package no longer depends on Package Control's `requests` package. The

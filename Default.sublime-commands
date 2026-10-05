@@ -40,10 +40,10 @@
         "command": "sync_settings_reborn_sync_online_pull"
     },
     {
-        "caption": "SyncSettingsReborn: Edit User Settings",
-        "command": "open_file",
+        "caption": "SyncSettingsReborn: Edit Settings",
+        "command": "edit_settings",
         "args": {
-            "file": "${packages}/User/SyncSettingsReborn.sublime-settings"
+            "base_file": "${packages}/SyncSettingsReborn/SyncSettingsReborn.sublime-settings"
         }
     }
 ]
