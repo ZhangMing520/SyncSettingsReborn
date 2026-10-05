@@ -6,16 +6,16 @@
 > UNMAINTAINED 声明）。本版本以 **SyncSettingsReborn** 之名发布在 Package Control 上，
 > 不会与已停更的旧包冲突。首次运行时会自动迁移旧版的 `gist_id` / `access_token` 等配置。
 
-# 原版声明：UNMAINTAINED（已停止维护）
-
-很遗憾，我已无法继续开发 SyncSettings。它仍会保留在 Package Control 仓库中，但不会再有新的改动。
-
-SyncSettings 是一个非常有挑战性的项目，它教会了我如何与社区相处，也让我对开源世界有了更多了解。
-感谢大家一直以来的支持，希望 SyncSettings 能继续像陪伴我一样陪伴你们。
-
-祝编码愉快！
-
-Marcelo
+> ## 原版声明：UNMAINTAINED（已停止维护）
+>
+> 很遗憾，我已无法继续开发 SyncSettings。它仍会保留在 Package Control 仓库中，但不会再有新的改动。
+>
+> SyncSettings 是一个非常有挑战性的项目，它教会了我如何与社区相处，也让我对开源世界有了更多了解。
+> 感谢大家一直以来的支持，希望 SyncSettings 能继续像陪伴我一样陪伴你们。
+>
+> 祝编码愉快！
+>
+> Marcelo
 
 ---
 
