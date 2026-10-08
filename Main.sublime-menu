@@ -15,7 +15,8 @@
                             {
                                 "command": "edit_settings",
                                 "args": {
-                                    "base_file": "${packages}/SyncSettingsReborn/SyncSettingsReborn.sublime-settings"
+                                    "base_file": "${packages}/SyncSettingsReborn/SyncSettingsReborn.sublime-settings",
+                                    "default": "{}"
                                 },
                                 "caption": "Settings"
                             },

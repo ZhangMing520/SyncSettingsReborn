@@ -1,0 +1,5 @@
+## 4.2.3
+
+- Added a Command Palette entry to open the package settings via `edit_settings`
+  (replacing the previous `open_file` entry), so defaults are shown alongside
+  user overrides.

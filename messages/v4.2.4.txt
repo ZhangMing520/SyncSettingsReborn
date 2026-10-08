@@ -1,0 +1,5 @@
+## 4.2.4
+
+- Renamed the settings Command Palette entry to `Preferences: SyncSettingsReborn
+  Settings` to follow the Package Control convention, and added `args.default`
+  so a clean settings file is created on first edit.
