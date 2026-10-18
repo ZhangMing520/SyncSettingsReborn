@@ -52,7 +52,7 @@ def manual_gist_lock():
     I/O), so log the wait instead of leaving the UI unexplained.
     """
     if not _manual_gist_lock.acquire(blocking=False):
-        logger.info('waiting for the background sync cycle to finish')
+        logger.info('waiting for another sync operation to finish')
         _manual_gist_lock.acquire()
     try:
         yield
