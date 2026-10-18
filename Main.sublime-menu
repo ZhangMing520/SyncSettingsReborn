@@ -1,5 +1,62 @@
 [
     {
+        "id": "tools",
+        "children": [
+            {
+                "caption": "SyncSettingsReborn",
+                "id": "sync-settings-reborn",
+                "children": [
+                    {
+                        "caption": "Download",
+                        "command": "sync_settings_reborn_download"
+                    },
+                    {
+                        "caption": "Upload",
+                        "command": "sync_settings_reborn_upload"
+                    },
+                    {
+                        "caption": "Delete",
+                        "command": "sync_settings_reborn_delete"
+                    },
+                    {
+                        "caption": "Show Logs",
+                        "command": "sync_settings_reborn_open_logs"
+                    },
+                    {
+                        "caption": "-"
+                    },
+                    {
+                        "caption": "Backup to Zip",
+                        "command": "sync_settings_reborn_backup"
+                    },
+                    {
+                        "caption": "Backup Package List",
+                        "command": "sync_settings_reborn_backup_package_list"
+                    },
+                    {
+                        "caption": "Restore from Zip",
+                        "command": "sync_settings_reborn_restore"
+                    },
+                    {
+                        "caption": "-"
+                    },
+                    {
+                        "caption": "Sync Online - Define Folder",
+                        "command": "sync_settings_reborn_sync_online_define_folder"
+                    },
+                    {
+                        "caption": "Sync Online - Push",
+                        "command": "sync_settings_reborn_sync_online_push"
+                    },
+                    {
+                        "caption": "Sync Online - Pull",
+                        "command": "sync_settings_reborn_sync_online_pull"
+                    }
+                ]
+            }
+        ]
+    },
+    {
         "caption": "Preferences",
         "mnemonic": "n",
         "id": "preferences",
@@ -13,58 +70,12 @@
                         "caption": "SyncSettingsReborn",
                         "children": [
                             {
+                                "caption": "Settings",
                                 "command": "edit_settings",
                                 "args": {
                                     "base_file": "${packages}/SyncSettingsReborn/SyncSettingsReborn.sublime-settings",
                                     "default": "{}"
-                                },
-                                "caption": "Settings"
-                            },
-                            {
-                                "caption": "-"
-                            },
-                            {
-                                "caption": "SyncSettingsReborn: Download",
-                                "command": "sync_settings_reborn_download"
-                            },
-                            {
-                                "caption": "SyncSettingsReborn: Upload",
-                                "command": "sync_settings_reborn_upload"
-                            },
-                            {
-                                "caption": "SyncSettingsReborn: Delete",
-                                "command": "sync_settings_reborn_delete"
-                            },
-                            {
-                                "caption": "SyncSettingsReborn: Show Logs",
-                                "command": "sync_settings_reborn_open_logs"
-                            },
-                            {
-                                "caption": "-"
-                            },
-                            {
-                                "caption": "SyncSettingsReborn: Backup to Zip",
-                                "command": "sync_settings_reborn_backup"
-                            },
-                            {
-                                "caption": "SyncSettingsReborn: Backup Package List",
-                                "command": "sync_settings_reborn_backup_package_list"
-                            },
-                            {
-                                "caption": "SyncSettingsReborn: Restore from Zip",
-                                "command": "sync_settings_reborn_restore"
-                            },
-                            {
-                                "caption": "SyncSettingsReborn: Sync Online - Define Folder",
-                                "command": "sync_settings_reborn_sync_online_define_folder"
-                            },
-                            {
-                                "caption": "SyncSettingsReborn: Sync Online - Push",
-                                "command": "sync_settings_reborn_sync_online_push"
-                            },
-                            {
-                                "caption": "SyncSettingsReborn: Sync Online - Pull",
-                                "command": "sync_settings_reborn_sync_online_pull"
+                                }
                             }
                         ]
                     }

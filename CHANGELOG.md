@@ -1,3 +1,22 @@
+## v4.2.5
+
+- The sync commands moved from `Preferences > Package Settings >
+  SyncSettingsReborn` to `Tools > SyncSettingsReborn`; Package Settings now
+  only contains the Settings entry. All commands remain in the Command Palette.
+- Release messages are no longer published for maintenance-only patches.
+  Messages are reserved for breaking changes and notable features.
+- Network calls now retry transient transport failures (dropped connections,
+  truncated responses) up to three attempts for read-only requests. Writes are
+  never replayed, so a retry cannot apply an upload twice.
+- Manual Upload / Download / Delete now hold a lock for their whole run, so the
+  background auto-sync cycle cannot interleave with them (which produced
+  spurious conflict reports and backups).
+- API calls now request gzip and decompress in memory, so the large gist
+  listing transfers compressed. Files written to disk still use identity
+  encoding, so a compressed body can never reach a settings file.
+- README: the original author's UNMAINTAINED notice was replaced with a link
+  to the original repository.
+
 ## v4.2.4
 
 - Renamed the settings Command Palette entry to `Preferences: SyncSettingsReborn

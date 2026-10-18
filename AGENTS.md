@@ -67,6 +67,19 @@ A local `.venv` (Python 3.14) is available and works in the sandbox:
 | `thread_progress.py` | Background worker that runs commands without blocking the UI. |
 | `commands/` | One file per command: `upload`, `download`, `delete`, `backup`, `restore`, `sync_online`, `open_logs`, plus `decorators.py`. |
 
+## Menus (`Main.sublime-menu`)
+
+Extending the built-in **Tools** menu only works in the merge form: a top-level
+entry containing just `"id": "tools"` and `"children"`. On ST 4215, giving that
+entry a `caption`/`mnemonic` makes Sublime append a *second* top-level "Tools"
+menu instead of merging. The **Preferences** entry is different — it keeps
+`caption`/`mnemonic`/`id` and merges correctly. Both shapes are pinned by
+`tests/test_assets.py`; do not "normalise" them without re-testing inside
+Sublime.
+
+Package Settings only holds the Settings entry; the channel review requires it
+to use `edit_settings` + `base_file`.
+
 ## Domain concepts (read before touching sync logic)
 
 - **Gist API content vs raw_url.** The inline `content` field from
@@ -93,15 +106,27 @@ A local `.venv` (Python 3.14) is available and works in the sandbox:
 - **HTTP layer invariants (`libs/http.py`).** Never let a body that is not the
   file itself reach disk: `download()` writes only on a final **200**, because
   `fetch_files` installs everything in its temp dir, so a 204/206 body would
-  overwrite a real settings file with an empty one. Keep `Accept-Encoding:
-  identity` on every request plus the `Content-Encoding` refusal, and keep
+  overwrite a real settings file with an empty one. `download()` also keeps
+  `Accept-Encoding: identity` and refuses any non-identity `Content-Encoding` —
+  compressed bytes must never reach a settings file. `request()` (API JSON)
+  advertises `gzip` and decompresses in memory: a truncated gzip stream is a
+  retryable `NetworkError`, an unknown encoding is not retried. Keep
   `Authorization` an *unredirected* header so a redirect cannot replay the
   token. A 3xx on a write must stay an error, never an auto-retry (urllib does
   not redirect PATCH/DELETE, and retrying could apply the write twice).
-- **Thread safety.** `AutoSync._lock` serializes the daemon cycle
-  (`_sync_once`) against `adopt()` (called by manual Upload/Download and at
-  startup). `_sync_once` never calls `adopt`, so the non-reentrant `Lock` is
-  safe — keep it that way. Long-held lock across network I/O is intentional.
+  Transport failures (dropped connections, `IncompleteRead`) are retried a
+  bounded number of times **only for idempotent methods** (GET/HEAD); writes
+  are never replayed.
+- **Thread safety.** `_manual_gist_lock` (module-level in `auto_sync.py`,
+  taken via `auto_sync.manual_gist_lock()` and
+  `@decorators.with_manual_gist_lock`) serializes the daemon cycle against the
+  manual gist commands (Upload, Download, Delete) for their whole run — without
+  it a cycle can run mid-upload, see a half-applied remote and report every
+  file as a conflict. Inside that lock, `AutoSync._lock` serializes
+  `_sync_once` against `adopt()`. `_sync_once` never calls `adopt`, so the
+  non-reentrant `Lock` is safe — keep it that way, and never nest
+  `manual_gist_lock()`. Long-held locks across network I/O are intentional;
+  the order is `_manual_gist_lock` → `AutoSync._lock` → `_gist_create_lock`.
 - **Gist-creation single-flight.** Anyone that may create a gist goes through
   `auto_sync.acquire_gist_id(create)` — never a hand-rolled
   `settings.get('gist_id')` check followed by `create()`. A background cycle and
@@ -127,7 +152,8 @@ A local `.venv` (Python 3.14) is available and works in the sandbox:
 - `SUBMISSION.md` documents the submission flow (no zip upload; register the
   Git repo in `wbond/package_control_channel`, releases come from **git tags**).
 - `messages.json` + `messages/*.txt` are the install/release notes Package
-  Control shows. Add an entry per release.
+  Control shows. Add an entry only for breaking changes or notable features —
+  not for every tag.
 - Releases are read from **tags** (e.g. `v4.1.0`) — there must be a tag for a
   version to be distributed. `repository.json` lives in the channel repo, NOT
   here.

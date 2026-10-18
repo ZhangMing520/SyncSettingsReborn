@@ -1,27 +1,10 @@
-# SyncSettingsReborn (maintained fork)
+# SyncSettingsReborn
 
 English | [简体中文](README.zh-CN.md)
 
-> This is a community-maintained revival of the original **Sync Settings**
-> plugin, which is no longer updated (see the original author's UNMAINTAINED
-> note below). It is published on Package Control as **SyncSettingsReborn**
-> so it does not collide with the dead package. Old `gist_id` / `access_token`
-> settings are migrated automatically on first run.
-
-> ## UNMAINTAINED (original author's note)
->
-> Sadly, I won't able to continue with the development of SyncSettings, it will be available on package control registry but won't receive new changes.
->
-> SyncSettings has been a very challenging project and it tought me how to cope with a community and learn more about the open source world.
-> Thanks for all the support during this time and I hope that SyncSttings remains being so useful like it was for me.
->
-> Happy Coding!
->
-> Marcelo
+A community-maintained fork of the unmaintained [Sync Settings](https://github.com/mfuentesg/SyncSettings) plugin, published as **SyncSettingsReborn**. If you used the original package, your `gist_id` and `access_token` are migrated automatically on first run.
 
 ---
-
-# SyncSettingsReborn
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
 [![All Contributors](https://img.shields.io/badge/all_contributors-6-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->

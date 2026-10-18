@@ -2,24 +2,10 @@
 
 [English](README.md) | 简体中文
 
-> 本插件是原版 **Sync Settings** 的社区维护续作——原插件已停止更新（见下方原作者的
-> UNMAINTAINED 声明）。本版本以 **SyncSettingsReborn** 之名发布在 Package Control 上，
-> 不会与已停更的旧包冲突。首次运行时会自动迁移旧版的 `gist_id` / `access_token` 等配置。
-
-> ## 原版声明：UNMAINTAINED（已停止维护）
->
-> 很遗憾，我已无法继续开发 SyncSettings。它仍会保留在 Package Control 仓库中，但不会再有新的改动。
->
-> SyncSettings 是一个非常有挑战性的项目，它教会了我如何与社区相处，也让我对开源世界有了更多了解。
-> 感谢大家一直以来的支持，希望 SyncSettings 能继续像陪伴我一样陪伴你们。
->
-> 祝编码愉快！
->
-> Marcelo
+原版 [Sync Settings](https://github.com/mfuentesg/SyncSettings) 已停止维护，本插件是其社区维护续作，
+以 **SyncSettingsReborn** 之名发布。首次运行时会自动迁移旧版的 `gist_id` / `access_token` 等配置。
 
 ---
-
-# SyncSettingsReborn
 
 [![Package Control 安装量](https://img.shields.io/packagecontrol/dt/SyncSettingsReborn.svg?maxAge=2592000)](https://packagecontrol.io/packages/SyncSettingsReborn)
 [![license](https://img.shields.io/github/license/ZhangMing520/SyncSettingsReborn.svg?maxAge=2592000)](https://github.com/ZhangMing520/SyncSettingsReborn/blob/master/LICENSE)
