@@ -18,22 +18,38 @@ uses the host trust store, which is what requests fell back to here too:
 installed.
 """
 
+import gzip
 import http.client
 import json
 import os
 import shutil
 import socket
+import time
 import urllib.error
 import urllib.request
+import zlib
 
 
 # Bound every request (including the background auto-sync loop) so a hanging
 # connection can never pin a worker thread forever.
 REQUEST_TIMEOUT = 30
 
+# Retry policy for transport failures. Only idempotent requests get more than
+# one attempt: a write may have reached the server before the connection broke,
+# and replaying it would apply it twice. Backoff doubles per attempt.
+RETRY_ATTEMPTS = 3
+RETRY_BACKOFF = 0.5
+_IDEMPOTENT_METHODS = frozenset(('GET', 'HEAD'))
+
 # GitHub rejects API calls without a User-Agent; python-requests used to send
 # its own, so send an explicit one in its place.
 USER_AGENT = 'SyncSettingsReborn'
+
+# API responses are parsed in memory, so they may be compressed on the wire.
+# Files streamed to disk must stay identity-encoded: writing gzip bytes into a
+# settings file would corrupt it.
+API_ACCEPT_ENCODING = 'gzip'
+FILE_ACCEPT_ENCODING = 'identity'
 
 # urllib's transport failures. ``urllib.error.HTTPError`` is a subclass of
 # URLError but carries a status the caller must classify, so every handler
@@ -44,6 +60,10 @@ _TRANSPORT_ERRORS = (urllib.error.URLError, http.client.HTTPException,
 
 class NetworkError(RuntimeError):
     """A transport-level failure (DNS, refused connection, timeout, TLS)."""
+
+
+class _NonRetryableNetworkError(NetworkError):
+    """A transport outcome retrying cannot fix, such as a transformed body."""
 
 
 class Response(object):
@@ -77,11 +97,9 @@ def _build_opener(proxies):
     return urllib.request.build_opener(urllib.request.ProxyHandler(merged))
 
 
-def _new_request(url, headers=None, data=None, method='GET'):
-    # Without an explicit Accept-Encoding the client accepts "anything", so a
-    # transparent proxy could return gzipped bytes that we would then write
-    # into a settings file.
-    all_headers = {'User-Agent': USER_AGENT, 'Accept-Encoding': 'identity'}
+def _new_request(url, headers=None, data=None, method='GET',
+                 accept_encoding=FILE_ACCEPT_ENCODING):
+    all_headers = {'User-Agent': USER_AGENT, 'Accept-Encoding': accept_encoding}
     if headers:
         all_headers.update(headers)
 
@@ -107,29 +125,69 @@ def _close(response):
 
 def _read_error_body(error):
     try:
-        return error.read() or b''
+        raw = error.read() or b''
     except Exception:
         return b''
     finally:
         _close(error)
+    try:
+        return _decode_body(error, raw)
+    except NetworkError:
+        # A malformed error body must not mask the status the caller classifies.
+        return raw
+
+
+def _content_encoding(response):
+    return (response.headers.get('Content-Encoding') or '').strip().lower()
 
 
 def _reject_transformed_body(response):
-    """Raise unless the body arrives exactly as it is stored on the server."""
-    encoding = (response.headers.get('Content-Encoding') or '').strip().lower()
+    """Refuse anything but the exact bytes stored on the server (write path)."""
+    encoding = _content_encoding(response)
     if encoding not in ('', 'identity'):
-        raise NetworkError('cannot decode Content-Encoding: {}'.format(encoding))
+        raise _NonRetryableNetworkError('cannot decode Content-Encoding: {}'.format(encoding))
+
+
+def _decode_body(response, raw):
+    """Undo a compression the API request asked for; the result stays in memory."""
+    encoding = _content_encoding(response)
+    if encoding in ('', 'identity'):
+        return raw
+    if encoding == 'gzip':
+        try:
+            return gzip.decompress(raw)
+        except (OSError, EOFError, zlib.error) as e:
+            # A truncated stream is a transport failure, so let it be retried.
+            raise NetworkError('cannot decode gzip body: {}'.format(e))
+    raise _NonRetryableNetworkError('cannot decode Content-Encoding: {}'.format(encoding))
+
+
+def _attempts_for(method):
+    return RETRY_ATTEMPTS if method.upper() in _IDEMPOTENT_METHODS else 1
+
+
+def _run_with_retries(operation, attempts):
+    for attempt in range(attempts):
+        try:
+            return operation()
+        except _NonRetryableNetworkError:
+            raise
+        except NetworkError:
+            if attempt + 1 >= attempts:
+                raise
+            time.sleep(RETRY_BACKOFF * (2 ** attempt))
 
 
 def _open(what, method, url, headers=None, data=None, proxies=None,
-          timeout=REQUEST_TIMEOUT):
+          timeout=REQUEST_TIMEOUT, accept_encoding=FILE_ACCEPT_ENCODING):
     """Open ``url`` and return the live response with its body still unread.
 
     A final HTTP error status propagates as :class:`urllib.error.HTTPError` for
     the caller to classify; only transport failures become
     :class:`NetworkError`. ``what`` names the operation in that message.
     """
-    req = _new_request(url, headers=headers, data=data, method=method)
+    req = _new_request(url, headers=headers, data=data, method=method,
+                       accept_encoding=accept_encoding)
     try:
         return _build_opener(proxies).open(req, timeout=timeout)
     except urllib.error.HTTPError:
@@ -144,28 +202,32 @@ def request(method, url, headers=None, data=None, proxies=None,
 
     ``data`` may be a ``str`` (encoded as UTF-8) or ``bytes``. Final HTTP
     statuses (4xx/5xx) come back on the Response — callers map them to their
-    domain errors. Transport failures raise :class:`NetworkError`.
+    domain errors. Transport failures raise :class:`NetworkError`; idempotent
+    methods are retried first, writes never are.
 
     Redirects follow urllib's own rules: GET/HEAD for any 3xx, POST for
     301/302/303 (downgraded to a bodyless GET). urllib refuses to redirect
     PATCH/DELETE, so those come back as a 3xx Response. GitHub's gist API does
     not redirect writes.
     """
-    try:
-        resp = _open('request', method, url, headers=headers, data=data,
-                     proxies=proxies, timeout=timeout)
-    except urllib.error.HTTPError as e:
-        # A final HTTP status (with a body) is a normal response for callers to
-        # classify (404 / 401 / 422 / 5xx ...).
-        return Response(e.code, _read_error_body(e))
+    def once():
+        try:
+            resp = _open('request', method, url, headers=headers, data=data,
+                         proxies=proxies, timeout=timeout,
+                         accept_encoding=API_ACCEPT_ENCODING)
+        except urllib.error.HTTPError as e:
+            # A final HTTP status (with a body) is a normal response for callers
+            # to classify (404 / 401 / 422 / 5xx ...).
+            return Response(e.code, _read_error_body(e))
 
-    try:
-        _reject_transformed_body(resp)
-        return Response(resp.getcode(), resp.read())
-    except _TRANSPORT_ERRORS as e:
-        raise NetworkError('response read failed: {}'.format(e))
-    finally:
-        _close(resp)
+        try:
+            return Response(resp.getcode(), _decode_body(resp, resp.read()))
+        except _TRANSPORT_ERRORS as e:
+            raise NetworkError('response read failed: {}'.format(e))
+        finally:
+            _close(resp)
+
+    return _run_with_retries(once, _attempts_for(method))
 
 
 def download(url, file_path, proxies=None, timeout=REQUEST_TIMEOUT):
@@ -174,28 +236,31 @@ def download(url, file_path, proxies=None, timeout=REQUEST_TIMEOUT):
     Only a 200 body is written: any other status — including another 2xx, whose
     body is not the file it stands for — leaves ``file_path`` untouched instead
     of creating an empty or partial file. Transport failures raise
-    :class:`NetworkError`.
+    :class:`NetworkError`; the GET is retried first.
     """
-    try:
-        resp = _open('download', 'GET', url, proxies=proxies, timeout=timeout)
-    except urllib.error.HTTPError as e:
-        _read_error_body(e)
-        return e.code
-
-    try:
-        code = resp.getcode()
-        if code != 200:
-            return code
-        _reject_transformed_body(resp)
-        with open(file_path, 'wb') as f:
-            shutil.copyfileobj(resp, f)
-        return code
-    except _TRANSPORT_ERRORS as e:
-        # Never leave a truncated file behind for the restore step to pick up.
+    def once():
         try:
-            os.remove(file_path)
-        except OSError:
-            pass
-        raise NetworkError('download failed: {}'.format(e))
-    finally:
-        _close(resp)
+            resp = _open('download', 'GET', url, proxies=proxies, timeout=timeout)
+        except urllib.error.HTTPError as e:
+            _read_error_body(e)
+            return e.code
+
+        try:
+            code = resp.getcode()
+            if code != 200:
+                return code
+            _reject_transformed_body(resp)
+            with open(file_path, 'wb') as f:
+                shutil.copyfileobj(resp, f)
+            return code
+        except _TRANSPORT_ERRORS as e:
+            # Never leave a truncated file behind for the restore step to pick up.
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
+            raise NetworkError('download failed: {}'.format(e))
+        finally:
+            _close(resp)
+
+    return _run_with_retries(once, RETRY_ATTEMPTS)

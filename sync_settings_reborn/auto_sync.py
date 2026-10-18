@@ -21,6 +21,7 @@ one side being silently lost. File deletions propagate both ways. Everything
 runs on a daemon thread, so it never blocks Sublime.
 """
 
+import contextlib
 import hashlib
 import os
 import threading
@@ -34,6 +35,30 @@ from .libs import settings, path, http
 from .libs.gist import Gist, NotFoundError
 from .libs.logger import logger
 from . import sync_version as version, sync_manager as manager
+
+# Serializes manual gist commands (Upload / Download / Delete) against the
+# background cycle, which holds it for a whole `_sync_once()`. Without it a
+# cycle can run mid-command and see a half-applied remote. Lock order:
+#   _manual_gist_lock -> AutoSync._lock -> _gist_create_lock
+_manual_gist_lock = threading.Lock()
+
+
+@contextlib.contextmanager
+def manual_gist_lock():
+    """Hold the manual-command lock for the duration of a gist command.
+
+    Not reentrant: a command must not call another gist command while holding
+    it. Contention is normal (the background cycle holds it across network
+    I/O), so log the wait instead of leaving the UI unexplained.
+    """
+    if not _manual_gist_lock.acquire(blocking=False):
+        logger.info('waiting for the background sync cycle to finish')
+        _manual_gist_lock.acquire()
+    try:
+        yield
+    finally:
+        _manual_gist_lock.release()
+
 
 # Guards the create-and-record-gist_id step in `acquire_gist_id`, the only user.
 #
@@ -499,8 +524,9 @@ class AutoSync:
             return
         while not self._stop.is_set():
             try:
-                with self._lock:
-                    self._sync_once()
+                with _manual_gist_lock:
+                    with self._lock:
+                        self._sync_once()
             except Exception as e:
                 logger.exception(e)
             if self._stop.wait(self._interval):

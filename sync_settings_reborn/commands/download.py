@@ -35,6 +35,7 @@ class SyncSettingsRebornDownloadCommand(sublime_plugin.WindowCommand):
             logger.exception(e)
         shutil.rmtree(self.temp_folder, ignore_errors=True)
 
+    @decorators.with_manual_gist_lock
     def download(self):
         try:
             g = Gist.from_settings().get(settings.get('gist_id'))

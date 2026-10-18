@@ -12,6 +12,7 @@ from .. import sync_version as version
 
 
 class SyncSettingsRebornDeleteCommand(sublime_plugin.WindowCommand):
+    @decorators.with_manual_gist_lock
     def delete(self, gid):
         try:
             gist.Gist.from_settings().delete(gid)

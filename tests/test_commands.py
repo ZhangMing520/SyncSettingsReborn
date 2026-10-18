@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import contextlib
 import os
 import shutil
 import tempfile
@@ -8,9 +9,11 @@ import unittest
 
 from .mocks import gist_race
 
+from sync_settings_reborn import auto_sync
 from sync_settings_reborn import backup
 from sync_settings_reborn import sync_manager as manager
 from sync_settings_reborn.commands import sync_online
+from sync_settings_reborn.commands import delete
 from sync_settings_reborn.commands import download
 from sync_settings_reborn.commands import upload
 from sync_settings_reborn import sync_version as version
@@ -155,6 +158,12 @@ class InstalledPackagesHelpersTest(unittest.TestCase):
         self.assertIsInstance(manager.local_installed_packages(), list)
 
 
+def _assert_manual_gist_lock(op):
+    op.assert_called_once_with()
+    op.return_value.__enter__.assert_called_once()
+    op.return_value.__exit__.assert_called_once()
+
+
 class DownloadCommandTest(unittest.TestCase):
     """Exercises the Download package-install path end to end with the network
     and Gist stubbed. The install step delegates to the shared
@@ -183,6 +192,31 @@ class DownloadCommandTest(unittest.TestCase):
         m_move.assert_called_once()
         # Restore happens before the best-effort install request.
         m_install.assert_called_once_with(['C'])
+
+    def test_download_holds_the_manual_gist_lock(self):
+        # The background cycle takes the same lock, so a download cannot
+        # interleave with it (that interleaving produced spurious conflicts).
+        with mock.patch.object(auto_sync, 'manual_gist_lock') as op, \
+                mock.patch.object(download.Gist, 'get', side_effect=RuntimeError('stop')):
+            self.cmd.download()
+        _assert_manual_gist_lock(op)
+
+
+class DeleteCommandTest(unittest.TestCase):
+    def setUp(self):
+        self.cmd = delete.SyncSettingsRebornDeleteCommand()
+        self.cmd.window = mock.MagicMock()
+
+    def test_delete_holds_the_manual_gist_lock(self):
+        # The background cycle takes the same lock, so a delete cannot race a
+        # cycle that is re-publishing the gist it removes.
+        with mock.patch.object(auto_sync, 'manual_gist_lock') as op, \
+                mock.patch.object(gist.Gist, 'from_settings') as from_settings, \
+                mock.patch.object(settings, 'update'), \
+                mock.patch.object(version, 'update_config_file'):
+            self.cmd.delete('g1')
+        from_settings.return_value.delete.assert_called_once_with('g1')
+        _assert_manual_gist_lock(op)
 
 
 class BackupSkipUninstalledTest(unittest.TestCase):
@@ -262,12 +296,23 @@ class UploadCommandTest(unittest.TestCase):
         m_update.assert_called_once_with('g1', data=mock.ANY)
         m_create.assert_not_called()
 
+    def test_upload_holds_the_manual_gist_lock(self):
+        # The background cycle takes the same lock, so an upload's network
+        # phase cannot interleave with it.
+        with mock.patch.object(auto_sync, 'manual_gist_lock') as op, \
+                mock.patch.object(manager, 'get_files', return_value={}):
+            self.cmd.upload()
+        _assert_manual_gist_lock(op)
+
     def test_upload_single_flight_against_concurrent_create(self):
         # Two Uploads with an empty gist_id (the same race an auto-sync cycle
         # joins) must create one gist; the loser must update the winner's.
+        # The manual-command lock would serialize the racers, so this test
+        # targets the inner create primitive and disables that lock.
         race = gist_race.SingleFlightRace()
-        with mock.patch.object(manager, 'get_files',
-                               return_value={'a.sublime-settings': {'content': '{}'}}), \
+        with mock.patch.object(auto_sync, 'manual_gist_lock', contextlib.nullcontext), \
+                mock.patch.object(manager, 'get_files',
+                                  return_value={'a.sublime-settings': {'content': '{}'}}), \
                 mock.patch.object(gist.Gist, 'from_settings', return_value=race.api), \
                 mock.patch.object(settings, 'get', side_effect=race.settings_get), \
                 mock.patch.object(settings, 'update', side_effect=race.settings_set), \

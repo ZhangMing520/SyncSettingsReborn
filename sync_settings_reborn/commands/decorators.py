@@ -5,6 +5,16 @@ import sublime
 
 from ..libs import settings
 from ..libs.logger import logger
+from .. import auto_sync
+
+
+def with_manual_gist_lock(func):
+    """Run ``func`` while holding the lock the background cycle also takes."""
+    @wraps(func)
+    def with_manual_gist_lock_inner(self, *args, **kwargs):
+        with auto_sync.manual_gist_lock():
+            return func(self, *args, **kwargs)
+    return with_manual_gist_lock_inner
 
 
 def check_settings(*props):

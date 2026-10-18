@@ -943,5 +943,25 @@ class TestUserFileGuards(_TempUserDirCase):
         self.assertTrue(os.path.exists(outside))
 
 
+class TestRunCycleLock(unittest.TestCase):
+    def test_background_cycle_holds_the_manual_gist_lock(self):
+        # Manual Upload/Download/Delete take the same lock; if the daemon ever
+        # stops taking it, a cycle can interleave with them again (spurious
+        # conflicts, extra backups) and no other test would notice.
+        sync = auto_sync.AutoSync()
+        sync._interval = 0
+        held = []
+
+        def fake_cycle():
+            held.append(auto_sync._manual_gist_lock.locked())
+            sync._stop.set()
+
+        with mock.patch.object(auto_sync.AutoSync, '_sync_once') as cycle:
+            cycle.side_effect = fake_cycle
+            sync._run()
+
+        self.assertEqual(held, [True])
+
+
 if __name__ == '__main__':
     unittest.main()

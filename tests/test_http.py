@@ -2,6 +2,7 @@
 
 import contextlib
 import email.message
+import gzip
 import io
 import os
 import shutil
@@ -10,7 +11,7 @@ import ssl
 import tempfile
 import unittest
 import urllib.error
-from http.client import HTTPException
+from http.client import HTTPException, IncompleteRead
 from types import SimpleNamespace
 from unittest import mock
 
@@ -56,23 +57,27 @@ class _FakeResp(object):
 
 
 @contextlib.contextmanager
-def mock_transport(resp=None, exc=None, env_proxies=None):
-    """Patch the two stdlib calls http.py makes, so no socket is opened.
+def mock_transport(resp=None, exc=None, env_proxies=None, side_effect=None):
+    """Patch the stdlib calls http.py makes, so no socket is opened.
 
     Yields a namespace holding the fake ``opener``, the ``build`` and
-    ``proxy_handler`` mocks, letting a test read what http.py handed them.
+    ``proxy_handler`` mocks, the backoff ``sleep`` mock, letting a test read
+    what http.py handed them.
     """
     opener = mock.MagicMock()
-    if exc is not None:
+    if side_effect is not None:
+        opener.open.side_effect = side_effect
+    elif exc is not None:
         opener.open.side_effect = exc
     else:
         opener.open.return_value = resp if resp is not None else _FakeResp()
     with mock.patch(GET_PROXIES, return_value=env_proxies or {}) as build_proxies, \
             mock.patch(BUILD_OPENER, return_value=opener) as build, \
-            mock.patch(PROXY_HANDLER) as proxy_handler:
+            mock.patch(PROXY_HANDLER) as proxy_handler, \
+            mock.patch('sync_settings_reborn.libs.http.time.sleep') as sleep:
         yield SimpleNamespace(opener=opener, build=build,
                               proxy_handler=proxy_handler,
-                              get_proxies=build_proxies)
+                              get_proxies=build_proxies, sleep=sleep)
 
 
 class ResponseTest(unittest.TestCase):
@@ -96,7 +101,7 @@ class RequestTest(unittest.TestCase):
         self.assertEqual(req.get_method(), 'GET')
         sent = dict(req.header_items())
         self.assertEqual(sent['User-agent'], http.USER_AGENT)
-        self.assertEqual(sent['Accept-encoding'], 'identity')
+        self.assertEqual(sent['Accept-encoding'], 'gzip')
 
     def test_patch_encodes_str_data(self):
         with mock_transport() as t:
@@ -153,12 +158,41 @@ class RequestTest(unittest.TestCase):
                     with self.assertRaises(http.NetworkError):
                         http.request('GET', 'https://example.com')
 
-    def test_gzipped_body_is_refused_rather_than_handed_back(self):
-        resp = _FakeResp(200, b'\x1f\x8b\x08\x00compressed',
+    def test_gzipped_api_body_is_decoded(self):
+        resp = _FakeResp(200, gzip.compress(b'{"ok": true}'),
                          content_encoding='gzip')
         with mock_transport(resp=resp):
+            r = http.request('GET', 'https://example.com')
+        self.assertEqual(r.json(), {'ok': True})
+
+    def test_gzipped_error_body_is_decoded(self):
+        # The error path bypasses Response construction, but the body can be
+        # compressed too (we advertise gzip); callers print it in the log and
+        # in UnexpectedError, so it must be readable text.
+        err = urllib.error.HTTPError(
+            'https://example.com', 403, 'Forbidden',
+            {'Content-Encoding': 'gzip'},
+            io.BytesIO(gzip.compress(b'{"message": "rate limited"}')))
+        with mock_transport(exc=err):
+            r = http.request('GET', 'https://example.com')
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.json(), {'message': 'rate limited'})
+
+    def test_unknown_content_encoding_is_refused_without_retrying(self):
+        resp = _FakeResp(200, b'\x00', content_encoding='br')
+        with mock_transport(resp=resp) as t:
             with self.assertRaises(http.NetworkError):
                 http.request('GET', 'https://example.com')
+        self.assertEqual(t.opener.open.call_count, 1)
+        t.sleep.assert_not_called()
+
+    def test_truncated_gzip_body_is_retried(self):
+        compressed = gzip.compress(b'{"ok": true}')
+        truncated = _FakeResp(200, compressed[:4], content_encoding='gzip')
+        with mock_transport(side_effect=[truncated, _FakeResp(200, b'{"ok": true}')]) as t:
+            r = http.request('GET', 'https://example.com')
+        self.assertEqual(r.json(), {'ok': True})
+        self.assertEqual(t.opener.open.call_count, 2)
 
     def test_explicit_proxies_are_merged_with_the_environment(self):
         # A settings-file http_proxy must not silence an exported HTTPS_PROXY:
@@ -187,6 +221,41 @@ class RequestTest(unittest.TestCase):
         t.get_proxies.assert_not_called()
 
 
+class TransportRetryTest(unittest.TestCase):
+    def test_get_is_retried_after_a_transport_failure(self):
+        with mock_transport(side_effect=[urllib.error.URLError('reset'),
+                                         _FakeResp(200, b'{"ok": true}')]) as t:
+            r = http.request('GET', 'https://example.com')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(t.opener.open.call_count, 2)
+        self.assertEqual(t.sleep.call_count, 1)
+
+    def test_retries_stop_at_the_attempt_limit(self):
+        with mock_transport(exc=urllib.error.URLError('reset')) as t:
+            with self.assertRaises(http.NetworkError):
+                http.request('GET', 'https://example.com')
+        self.assertEqual(t.opener.open.call_count, http.RETRY_ATTEMPTS)
+
+    def test_writes_are_never_replayed(self):
+        for method in ('POST', 'PATCH', 'DELETE'):
+            with self.subTest(method=method):
+                with mock_transport(exc=urllib.error.URLError('reset')) as t:
+                    with self.assertRaises(http.NetworkError):
+                        http.request(method, 'https://example.com', data='{}')
+                self.assertEqual(t.opener.open.call_count, 1)
+                t.sleep.assert_not_called()
+
+    def test_truncated_body_is_retried(self):
+        class _TruncatedResp(_FakeResp):
+            def read(self, n=-1):
+                raise IncompleteRead(b'partial', 10)
+
+        with mock_transport(side_effect=[_TruncatedResp(), _FakeResp(200, b'ok')]) as t:
+            r = http.request('GET', 'https://example.com')
+        self.assertEqual(r.content, b'ok')
+        self.assertEqual(t.opener.open.call_count, 2)
+
+
 class DownloadTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
@@ -201,6 +270,12 @@ class DownloadTest(unittest.TestCase):
         self.assertEqual(code, 200)
         with open(self.path, 'rb') as f:
             self.assertEqual(f.read(), b'file-bytes')
+
+    def test_download_keeps_identity_encoding(self):
+        # Compressed bytes must never reach a settings file on disk.
+        with mock_transport() as t:
+            http.download('https://example.com/f', self.path)
+        self.assertEqual(t.opener.open.call_args[0][0].get_header('Accept-encoding'), 'identity')
 
     def test_non_200_success_status_does_not_write_a_file(self):
         # fetch_files installs whatever is in the temp dir, so a 2xx body that
@@ -223,6 +298,15 @@ class DownloadTest(unittest.TestCase):
         with mock_transport(exc=urllib.error.URLError('timed out')):
             with self.assertRaises(http.NetworkError):
                 http.download('https://example.com/f', self.path)
+
+    def test_transport_failure_is_retried(self):
+        with mock_transport(side_effect=[urllib.error.URLError('reset'),
+                                         _FakeResp(200, b'file-bytes')]) as t:
+            code = http.download('https://example.com/f', self.path)
+        self.assertEqual(code, 200)
+        self.assertEqual(t.opener.open.call_count, 2)
+        with open(self.path, 'rb') as f:
+            self.assertEqual(f.read(), b'file-bytes')
 
     def test_gzipped_body_is_not_written(self):
         resp = _FakeResp(200, b'\x1f\x8b\x08\x00compressed',

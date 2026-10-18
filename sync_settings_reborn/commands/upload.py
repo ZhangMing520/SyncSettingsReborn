@@ -52,6 +52,7 @@ class SyncSettingsRebornUploadCommand(sublime_plugin.WindowCommand):
             auto_sync._content_hashes(files), {}, name_map)
         return gist_api.update(gid, data={'files': payload})
 
+    @decorators.with_manual_gist_lock
     def upload(self, installed=None):
         files = manager.get_files(installed=installed)
         if not len(files):
